@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Sharing Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        #loginScreen {
+            padding: 60px 30px;
+            text-align: center;
+        }
+
+        #loginScreen h2 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+
+        #usernameInput {
+            width: 100%;
+            max-width: 400px;
+            padding: 15px 20px;
+            font-size: 1.1em;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        #usernameInput:focus {
+            border-color: #667eea;
+        }
+
+        #joinButton {
+            margin-top: 20px;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        #joinButton:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        #mainScreen {
+            display: none;
+        }
+
+        .content {
+            display: flex;
+            min-height: 500px;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: #f8f9fa;
+            border-right: 1px solid #e0e0e0;
+            padding: 20px;
+        }
+
+        .sidebar h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+
+        .user-list {
+            list-style: none;
+        }
+
+        .user-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+
+        .user-item:hover {
+            transform: translateX(5px);
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .user-badge {
+            background: #667eea;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+        }
+
+        .share-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .share-button:hover {
+            background: #5568d3;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 30px;
+        }
+
+        .status-message {
+            background: #e8f4f8;
+            border-left: 4px solid #667eea;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            color: #333;
+        }
+
+        .notifications {
+            margin-top: 30px;
+        }
+
+        .notifications h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .notification {
+            background: white;
+            border: 1px solid #e0e0e0;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .notification.incoming {
+            border-left: 4px solid #4caf50;
+        }
+
+        .notification.outgoing {
+            border-left: 4px solid #2196f3;
+        }
+
+        .notification-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .notification-body {
+            color: #666;
+            margin: 10px 0;
+        }
+
+        .notification-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.8;
+        }
+
+        .btn-accept {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-reject {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-download {
+            background: #2196f3;
+            color: white;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8em;
+        }
+
+        .file-input-wrapper {
+            display: none;
+        }
+
+        .online-count {
+            background: #4caf50;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state i {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid #e0e0e0;
+            }
+        }
+
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-accepted {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-rejected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-completed {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📁 File Sharing Server</h1>
+            <p>Share files securely and efficiently in real-time</p>
+        </div>
+
+        <div id="loginScreen">
+            <h2>Welcome! Enter your name to join</h2>
+            <input type="text" id="usernameInput" placeholder="Enter your name" maxlength="50">
+            <br>
+            <button id="joinButton">Join Server</button>
+        </div>
+
+        <div id="mainScreen">
+            <div class="content">
+                <div class="sidebar">
+                    <h3>Online Users</h3>
+                    <div class="online-count" id="onlineCount">0 users online</div>
+                    <ul class="user-list" id="userList">
+                        <li class="empty-state">No users online yet</li>
+                    </ul>
+                </div>
+
+                <div class="main-content">
+                    <div class="status-message">
+                        Welcome, <strong id="currentUsername"></strong>! You're connected to the server.
+                    </div>
+
+                    <div class="notifications">
+                        <h3>File Transfers</h3>
+                        <div id="notificationsList">
+                            <div class="empty-state">
+                                <p>No active transfers</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="fileInput" class="file-input-wrapper">
+
+    <script>
+        // Global variables
+        let ws = null;
+        let sessionId = null;
+        let username = null;
+        let onlineUsers = [];
+        let pendingFileTransfer = null;
+
+        // Generate unique session ID
+        function generateSessionId() {
+            return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // Initialize WebSocket connection
+        function initWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/sharing/`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                // Send join message
+                ws.send(JSON.stringify({
+                    type: 'user_join',
+                    session_id: sessionId,
+                    username: username
+                }));
+
+                // Start heartbeat
+                setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'heartbeat' }));
+                    }
+                }, 30000);
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                setTimeout(() => {
+                    console.log('Reconnecting...');
+                    initWebSocket();
+                }, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        // Handle WebSocket messages
+        function handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'online_users':
+                    onlineUsers = data.users;
+                    updateUserList();
+                    break;
+                case 'user_joined':
+                    onlineUsers.push({
+                        session_id: data.session_id,
+                        username: data.username
+                    });
+                    updateUserList();
+                    break;
+                case 'user_left':
+                    onlineUsers = onlineUsers.filter(u => u.session_id !== data.session_id);
+                    updateUserList();
+                    break;
+                case 'file_transfer_request':
+                    handleFileTransferRequest(data);
+                    break;
+                case 'file_transfer_response':
+                    handleFileTransferResponse(data);
+                    break;
+                case 'file_transfer_complete':
+                    handleFileTransferComplete(data);
+                    break;
+            }
+        }
+
+        // Update user list UI
+        function updateUserList() {
+            const userList = document.getElementById('userList');
+            const onlineCount = document.getElementById('onlineCount');
+            
+            // Filter out current user
+            const otherUsers = onlineUsers.filter(u => u.session_id !== sessionId);
+            
+            onlineCount.textContent = `${onlineUsers.length} user${onlineUsers.length !== 1 ? 's' : ''} online`;
+
+            if (otherUsers.length === 0) {
+                userList.innerHTML = '<li class="empty-state">No other users online</li>';
+                return;
+            }
+
+            userList.innerHTML = otherUsers.map(user => `
+                <li class="user-item">
+                    <div>
+                        <div class="user-name">${escapeHtml(user.username)}</div>
+                    </div>
+                    <button class="share-button" onclick="selectUserForShare('${user.session_id}', '${escapeHtml(user.username)}')">
+                        Share
+                    </button>
+                </li>
+            `).join('');
+        }
+
+        // Select user and trigger file selection
+        function selectUserForShare(receiverSession, receiverUsername) {
+            pendingFileTransfer = {
+                receiver_session: receiverSession,
+                receiver_username: receiverUsername
+            };
+            document.getElementById('fileInput').click();
+        }
+
+        // Handle file selection
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file || !pendingFileTransfer) return;
+
+            // Send file transfer request
+            ws.send(JSON.stringify({
+                type: 'file_transfer_request',
+                sender_session: sessionId,
+                sender_username: username,
+                receiver_session: pendingFileTransfer.receiver_session,
+                receiver_username: pendingFileTransfer.receiver_username,
+                filename: file.name,
+                filesize: file.size
+            }));
+
+            // Store file for later upload
+            pendingFileTransfer.file = file;
+
+            // Reset file input
+            e.target.value = '';
+        });
+
+        // Handle incoming file transfer request
+        function handleFileTransferRequest(data) {
+            const notificationsList = document.getElementById('notificationsList');
+            
+            // Remove empty state
+            const emptyState = notificationsList.querySelector('.empty-state');
+            if (emptyState) emptyState.remove();
+
+            const notificationHtml = `
+                <div class="notification incoming" id="notification-${data.transfer_id}">
+                    <div class="notification-header">
+                        <div class="notification-title">📥 Incoming File</div>
+                        <span class="status-badge status-pending">Pending</span>
+                    </div>
+                    <div class="notification-body">
+                        <strong>${escapeHtml(data.sender_username)}</strong> wants to send you:<br>
+                        <strong>${escapeHtml(data.filename)}</strong> (${data.filesize_display})
+                    </div>
+                    <div class="notification-actions">
+                        <button class="btn btn-accept" onclick="respondToTransfer('${data.transfer_id}', true)">
+                            Accept
+                        </button>
+                        <button class="btn btn-reject" onclick="respondToTransfer('${data.transfer_id}', false)">
+                            Reject
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            notificationsList.insertAdjacentHTML('afterbegin', notificationHtml);
+        }
+
+        // Respond to file transfer request
+        function respondToTransfer(transferId, accepted) {
+            ws.send(JSON.stringify({
+                type: 'file_transfer_response',
+                transfer_id: transferId,
+                accepted: accepted
+            }));
+
+            const notification = document.getElementById(`notification-${transferId}`);
+            const actions = notification.querySelector('.notification-actions');
+            const statusBadge = notification.querySelector('.status-badge');
+
+            actions.remove();
+
+            if (accepted) {
+                statusBadge.className = 'status-badge status-accepted';
+                statusBadge.textContent = 'Accepted';
+                notification.insertAdjacentHTML('beforeend', `
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 0%">Waiting for file...</div>
+                    </div>
+                `);
+            } else {
+                statusBadge.className = 'status-badge status-rejected';
+                statusBadge.textContent = 'Rejected';
+            }
+        }
+
+        // Handle file transfer response
+        async function handleFileTransferResponse(data) {
+            if (!data.accepted) {
+                // Show rejection message
+                alert('File transfer was rejected');
+                pendingFileTransfer = null;
+                return;
+            }
+
+            // Upload file if we're the sender
+            if (pendingFileTransfer && pendingFileTransfer.file) {
+                await uploadFile(data.transfer_id, pendingFileTransfer.file);
+                pendingFileTransfer = null;
+            } else {
+                // We're the receiver, prepare for download
+                const notification = document.getElementById(`notification-${data.transfer_id}`);
+                if (notification) {
+                    setTimeout(() => {
+                        downloadFile(data.transfer_id);
+                    }, 1000);
+                }
+            }
+        }
+
+        // Upload file to server
+        async function uploadFile(transferId, file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('transfer_id', transferId);
+
+            try {
+                const response = await fetch('/upload/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    console.log('File uploaded successfully');
+                } else {
+                    console.error('Upload failed');
+                    ws.send(JSON.stringify({
+                        type: 'file_transfer_complete',
+                        transfer_id: transferId,
+                        success: false
+                    }));
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+            }
+        }
+
+        // Download file from server
+        async function downloadFile(transferId) {
+            const notification = document.getElementById(`notification-${transferId}`);
+            const progressBar = notification.querySelector('.progress-fill');
+            
+            try {
+                progressBar.style.width = '50%';
+                progressBar.textContent = 'Downloading...';
+
+                const response = await fetch(`/download/${transferId}/?session_id=${sessionId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Download failed');
+                }
+
+                const blob = await response.blob();
+                const filename = response.headers.get('Content-Disposition')
+                    .split('filename=')[1].replace(/"/g, '');
+
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+
+                progressBar.style.width = '100%';
+                progressBar.textContent = 'Complete!';
+
+                // Notify completion
+                ws.send(JSON.stringify({
+                    type: 'file_transfer_complete',
+                    transfer_id: transferId,
+                    success: true
+                }));
+
+                // Cleanup
+                await fetch(`/cleanup/${transferId}/`, { method: 'POST' });
+
+            } catch (error) {
+                console.error('Download error:', error);
+                progressBar.style.width = '100%';
+                progressBar.textContent = 'Failed';
+                progressBar.style.background = '#f44336';
+            }
+        }
+
+        // Handle transfer completion
+        function handleFileTransferComplete(data) {
+            const notification = document.getElementById(`notification-${data.transfer_id}`);
+            if (notification) {
+                const statusBadge = notification.querySelector('.status-badge');
+                statusBadge.className = 'status-badge status-completed';
+                statusBadge.textContent = data.success ? 'Completed' : 'Failed';
+            }
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Join button handler
+        document.getElementById('joinButton').addEventListener('click', () => {
+            const usernameInput = document.getElementById('usernameInput');
+            const enteredUsername = usernameInput.value.trim();
+
+            if (!enteredUsername) {
+                alert('Please enter your name');
+                return;
+            }
+
+            username = enteredUsername;
+            sessionId = generateSessionId();
+
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('mainScreen').style.display = 'block';
+            document.getElementById('currentUsername').textContent = username;
+
+            initWebSocket();
+        });
+
+        // Allow Enter key to join
+        document.getElementById('usernameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('joinButton').click();
+            }
+        });
+    </script>
+</body>
+</html>
