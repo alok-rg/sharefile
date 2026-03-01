@@ -39,6 +39,11 @@ chmod +x run.sh
 ./run.sh
 ```
 
+Or manually:
+```bash
+uvicorn file_share_project.asgi:application --host 0.0.0.0 --port 8000
+```
+
 Server runs on: `http://localhost:8000`
 
 ## Access from other devices
