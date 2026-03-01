@@ -18,10 +18,9 @@ pkg update && pkg upgrade
 # Install Python
 pkg install python
 
-# Clone or copy this project to your device
-cd ~/storage/shared
-mkdir file_share
-cd file_share
+# Clone the project
+git clone https://github.com/alok-rg/sharefile.git
+cd sharefile
 
 # Install dependencies
 pip install -r requirements.txt
