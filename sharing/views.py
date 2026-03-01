@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404
-from django.http import StreamingHttpResponse, JsonResponse, HttpResponse
+from django.http import FileResponse, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from .models import FileTransfer
@@ -87,22 +87,13 @@ def download_file(request, transfer_id):
         if content_type is None:
             content_type = 'application/octet-stream'
         
-        # Create streaming response
-        def file_iterator(file_path, chunk_size=8192):
-            """Generator to read file in chunks"""
-            with open(file_path, 'rb') as f:
-                while True:
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    yield chunk
-        
-        response = StreamingHttpResponse(
-            file_iterator(file_path),
-            content_type=content_type
+        # Use FileResponse for efficient file streaming
+        response = FileResponse(
+            open(file_path, 'rb'),
+            content_type=content_type,
+            as_attachment=True,
+            filename=transfer.filename
         )
-        response['Content-Length'] = os.path.getsize(file_path)
-        response['Content-Disposition'] = f'attachment; filename="{transfer.filename}"'
         
         return response
     
