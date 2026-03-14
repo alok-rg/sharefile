@@ -334,6 +334,159 @@
             background: #d1ecf1;
             color: #0c5460;
         }
+
+        /* Shared Text Editor Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s;
+        }
+
+        .modal.active {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            width: 95%;
+            max-width: 1000px;
+            height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px 15px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 2em;
+            cursor: pointer;
+            line-height: 1;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+        }
+
+        .close-btn:hover {
+            opacity: 0.7;
+        }
+
+        .modal-body {
+            padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .editor-info {
+            background: #e8f4f8;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+            color: #333;
+        }
+
+        #sharedTextArea {
+            width: 100%;
+            flex: 1;
+            min-height: 400px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 15px;
+            line-height: 1.5;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            resize: none;
+            outline: none;
+            margin-bottom: 15px;
+        }
+
+        #sharedTextArea:focus {
+            border-color: #667eea;
+        }
+
+        .editor-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .editor-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: opacity 0.2s;
+        }
+
+        .editor-btn:hover {
+            opacity: 0.8;
+        }
+
+        .btn-copy {
+            background: #2196f3;
+            color: white;
+        }
+
+        .btn-clear {
+            background: #f44336;
+            color: white;
+        }
+
+        .open-editor-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            z-index: 999;
+        }
+
+        .open-editor-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -378,6 +531,29 @@
         </div>
     </div>
 
+    <!-- Shared Text Editor Modal -->
+    <div id="editorModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📝 Shared Text Editor</h2>
+                <button class="close-btn" onclick="closeEditor()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="editor-info">
+                    💡 This is a live collaborative editor. Everyone can see changes in real-time!
+                </div>
+                <textarea id="sharedTextArea" placeholder="Start typing... everyone will see your changes in real-time!"></textarea>
+                <div class="editor-actions">
+                    <button class="editor-btn btn-copy" onclick="copyText()">📋 Copy</button>
+                    <button class="editor-btn btn-clear" onclick="clearText()">🗑️ Clear All</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating button to open editor -->
+    <button class="open-editor-btn" onclick="openEditor()" title="Open Shared Text Editor">📝</button>
+
     <input type="file" id="fileInput" class="file-input-wrapper">
 
     <script>
@@ -387,6 +563,20 @@
         let username = null;
         let onlineUsers = [];
         let pendingFileTransfer = null;
+        let isUpdatingText = false; // Prevent feedback loop
+        let uploadStartTime = null;
+        let uploadedBytes = 0;
+        let totalBytes = 0;
+        
+        // WebRTC variables
+        let peerConnections = {}; // Map of transfer_id -> RTCPeerConnection
+        let dataChannels = {}; // Map of transfer_id -> RTCDataChannel
+        const webrtcConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
 
         // Generate unique session ID
         function generateSessionId() {
@@ -401,7 +591,10 @@
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                console.log('WebSocket connected');
+                
+                // Clear any stale online users from previous session
+                onlineUsers = [];
+                
                 // Send join message
                 ws.send(JSON.stringify({
                     type: 'user_join',
@@ -423,9 +616,11 @@
             };
 
             ws.onclose = () => {
-                console.log('WebSocket disconnected');
+                // Clear online users on disconnect
+                onlineUsers = [];
+                updateUserList();
+                
                 setTimeout(() => {
-                    console.log('Reconnecting...');
                     initWebSocket();
                 }, 3000);
             };
@@ -459,8 +654,23 @@
                 case 'file_transfer_response':
                     handleFileTransferResponse(data);
                     break;
+                case 'upload_complete':
+                    handleUploadComplete(data);
+                    break;
                 case 'file_transfer_complete':
                     handleFileTransferComplete(data);
+                    break;
+                case 'text_update':
+                    handleTextUpdate(data);
+                    break;
+                case 'webrtc_offer':
+                    handleWebRTCOffer(data);
+                    break;
+                case 'webrtc_answer':
+                    handleWebRTCAnswer(data);
+                    break;
+                case 'webrtc_ice_candidate':
+                    handleWebRTCIceCandidate(data);
                     break;
             }
         }
@@ -574,9 +784,11 @@
                 statusBadge.className = 'status-badge status-accepted';
                 statusBadge.textContent = 'Accepted';
                 notification.insertAdjacentHTML('beforeend', `
+                    <div class="progress-info" style="font-size: 13px; color: #333; margin-top: 5px; font-weight: 500;">Waiting for file...</div>
                     <div class="progress-bar">
-                        <div class="progress-fill" style="width: 0%">Waiting for file...</div>
+                        <div class="progress-fill" style="width: 0%"></div>
                     </div>
+                    <div class="speed-display" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
                 `);
             } else {
                 statusBadge.className = 'status-badge status-rejected';
@@ -595,54 +807,167 @@
 
             // Upload file if we're the sender
             if (pendingFileTransfer && pendingFileTransfer.file) {
-                await uploadFile(data.transfer_id, pendingFileTransfer.file);
+                const notificationsList = document.getElementById('notificationsList');
+                
+                // Remove empty state if exists
+                const emptyState = notificationsList.querySelector('.empty-state');
+                if (emptyState) emptyState.remove();
+                
+                // Create outgoing notification for sender
+                let senderNotification = document.getElementById(`notification-${data.transfer_id}`);
+                if (!senderNotification) {
+                    const notificationHtml = `
+                        <div class="notification outgoing" id="notification-${data.transfer_id}">
+                            <div class="notification-header">
+                                <div class="notification-title">📤 Outgoing File</div>
+                                <span class="status-badge status-accepted">Accepted</span>
+                            </div>
+                            <div class="notification-body">
+                                Sending to <strong>${escapeHtml(pendingFileTransfer.receiver_username)}</strong>:<br>
+                                <strong>${escapeHtml(pendingFileTransfer.file.name)}</strong> (${formatFileSize(pendingFileTransfer.file.size)})
+                            </div>
+                            <div class="progress-info" style="font-size: 13px; color: #333; margin-top: 5px; font-weight: 500;">Uploading...</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 0%"></div>
+                            </div>
+                            <div class="speed-display" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                        </div>
+                    `;
+                    notificationsList.insertAdjacentHTML('afterbegin', notificationHtml);
+                }
+                
+                // Try WebRTC P2P first, fallback to HTTP if it fails
+                try {
+                    await initiatePeerConnection(data.transfer_id, pendingFileTransfer.file);
+                } catch (error) {
+                    await uploadFile(data.transfer_id, pendingFileTransfer.file);
+                    
+                    // Notify receiver that upload is complete
+                    ws.send(JSON.stringify({
+                        type: 'upload_complete',
+                        transfer_id: data.transfer_id
+                    }));
+                }
+                
                 pendingFileTransfer = null;
             } else {
-                // We're the receiver, prepare for download
+                // We're the receiver, show waiting message
                 const notification = document.getElementById(`notification-${data.transfer_id}`);
                 if (notification) {
-                    setTimeout(() => {
-                        downloadFile(data.transfer_id);
-                    }, 1000);
+                    const progressInfo = notification.querySelector('.progress-info');
+                    const progressBar = notification.querySelector('.progress-fill');
+                    const speedDisplay = notification.querySelector('.speed-display');
+                    if (progressInfo) {
+                        progressInfo.textContent = 'Connecting...';
+                    }
+                    if (speedDisplay) {
+                        speedDisplay.textContent = '⚡ Establishing WebRTC P2P connection...';
+                    }
+                    if (progressBar) {
+                        progressBar.style.width = '10%';
+                    }
                 }
             }
         }
 
-        // Upload file to server
+        // Upload file to server with progress tracking
         async function uploadFile(transferId, file) {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('transfer_id', transferId);
+            return new Promise((resolve, reject) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('transfer_id', transferId);
 
-            try {
-                const response = await fetch('/upload/', {
-                    method: 'POST',
-                    body: formData
+                const xhr = new XMLHttpRequest();
+                uploadStartTime = Date.now();
+                uploadedBytes = 0;
+                totalBytes = file.size;
+
+                // Get progress bar elements for sender
+                const notification = document.getElementById(`notification-${transferId}`);
+                const progressBar = notification ? notification.querySelector('.progress-fill') : null;
+                const progressInfo = notification ? notification.querySelector('.progress-info') : null;
+                const speedDisplay = notification ? notification.querySelector('.speed-display') : null;
+
+                // Progress tracking for upload
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        uploadedBytes = e.loaded;
+                        const percentComplete = (e.loaded / e.total) * 100;
+                        const loaded = formatFileSize(e.loaded);
+                        const total = formatFileSize(e.total);
+                        
+                        // Calculate speed
+                        const elapsedTime = (Date.now() - uploadStartTime) / 1000; // seconds
+                        const speed = e.loaded / elapsedTime; // bytes per second
+                        const speedText = formatFileSize(speed) + '/s';
+                        
+                        // Update progress bar and info
+                        if (progressBar) {
+                            progressBar.style.width = `${percentComplete}%`;
+                        }
+                        if (progressInfo) {
+                            progressInfo.textContent = `${loaded} / ${total} (${percentComplete.toFixed(0)}%)`;
+                        }
+                        
+                        // Update speed display with HTTP indicator
+                        if (speedDisplay) {
+                            speedDisplay.textContent = `Speed: ${speedText} 🌐 HTTP (via Server)`;
+                        }
+
+                    }
                 });
 
-                if (response.ok) {
-                    console.log('File uploaded successfully');
-                } else {
-                    console.error('Upload failed');
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        resolve();
+                    } else {
+                        console.error('Upload failed');
+                        ws.send(JSON.stringify({
+                            type: 'file_transfer_complete',
+                            transfer_id: transferId,
+                            success: false
+                        }));
+                        reject(new Error('Upload failed'));
+                    }
+                });
+
+                xhr.addEventListener('error', () => {
+                    console.error('Upload error');
                     ws.send(JSON.stringify({
                         type: 'file_transfer_complete',
                         transfer_id: transferId,
                         success: false
                     }));
-                }
-            } catch (error) {
-                console.error('Upload error:', error);
-            }
+                    reject(new Error('Upload error'));
+                });
+
+                xhr.addEventListener('timeout', () => {
+                    console.error('Upload timeout');
+                    reject(new Error('Upload timeout'));
+                });
+
+                xhr.open('POST', '/upload/');
+                xhr.timeout = 300000; // 5 minutes timeout
+                xhr.send(formData);
+            });
         }
 
-        // Download file from server
+        // Download file from server with progress tracking
         async function downloadFile(transferId) {
             const notification = document.getElementById(`notification-${transferId}`);
             const progressBar = notification.querySelector('.progress-fill');
+            const progressInfo = notification.querySelector('.progress-info');
+            const speedDisplay = notification.querySelector('.speed-display');
             
             try {
-                progressBar.style.width = '50%';
-                progressBar.textContent = 'Downloading...';
+                if (progressBar) {
+                    progressBar.style.width = '10%';
+                }
+                if (progressInfo) {
+                    progressInfo.textContent = 'Starting...';
+                }
+                
+                const downloadStartTime = Date.now();
 
                 const response = await fetch(`/download/${transferId}/?session_id=${sessionId}`);
                 
@@ -650,9 +975,58 @@
                     throw new Error('Download failed');
                 }
 
-                const blob = await response.blob();
-                const filename = response.headers.get('Content-Disposition')
-                    .split('filename=')[1].replace(/"/g, '');
+                // Get filename from header
+                const contentDisposition = response.headers.get('Content-Disposition');
+                const filename = contentDisposition
+                    ? contentDisposition.split('filename="')[1].replace('"', '')
+                    : 'download';
+
+                // Get total size
+                const contentLength = response.headers.get('Content-Length');
+                const total = parseInt(contentLength, 10);
+
+                // Read stream with progress
+                const reader = response.body.getReader();
+                const chunks = [];
+                let receivedLength = 0;
+
+                while (true) {
+                    const {done, value} = await reader.read();
+                    
+                    if (done) break;
+                    
+                    chunks.push(value);
+                    receivedLength += value.length;
+                    
+                    // Update progress with size info
+                    if (total) {
+                        const percent = (receivedLength / total) * 100;
+                        const loaded = formatFileSize(receivedLength);
+                        const totalSize = formatFileSize(total);
+                        
+                        // Calculate speed
+                        const elapsedTime = (Date.now() - downloadStartTime) / 1000; // seconds
+                        const speed = receivedLength / elapsedTime; // bytes per second
+                        const speedText = formatFileSize(speed) + '/s';
+                        
+                        if (progressBar) {
+                            progressBar.style.width = `${percent}%`;
+                        }
+                        
+                        // Update progress info above bar
+                        if (progressInfo) {
+                            progressInfo.textContent = `${loaded} / ${totalSize} (${percent.toFixed(0)}%)`;
+                        }
+                        
+                        // Update speed display below progress bar with HTTP indicator
+                        if (speedDisplay) {
+                            speedDisplay.textContent = `Speed: ${speedText} 🌐 HTTP (via Server)`;
+                        }
+                    }
+                }
+
+                // Combine chunks into blob
+                const blob = new Blob(chunks);
 
                 // Create download link
                 const url = window.URL.createObjectURL(blob);
@@ -664,8 +1038,12 @@
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
 
-                progressBar.style.width = '100%';
-                progressBar.textContent = 'Complete!';
+                if (progressBar) {
+                    progressBar.style.width = '100%';
+                }
+                if (progressInfo) {
+                    progressInfo.textContent = 'Complete!';
+                }
 
                 // Notify completion
                 ws.send(JSON.stringify({
@@ -679,10 +1057,21 @@
 
             } catch (error) {
                 console.error('Download error:', error);
-                progressBar.style.width = '100%';
-                progressBar.textContent = 'Failed';
-                progressBar.style.background = '#f44336';
+                if (progressBar) {
+                    progressBar.style.width = '100%';
+                    progressBar.style.background = '#f44336';
+                }
+                if (progressInfo) {
+                    progressInfo.textContent = 'Failed';
+                    progressInfo.style.color = '#f44336';
+                }
             }
+        }
+
+        // Handle upload complete notification
+        function handleUploadComplete(data) {
+            // Receiver starts download now that upload is complete
+            downloadFile(data.transfer_id);
         }
 
         // Handle transfer completion
@@ -695,11 +1084,407 @@
             }
         }
 
+        // ========== WebRTC Peer-to-Peer File Transfer Functions ==========
+        
+        function createPeerConnection(transferId, isSender) {
+            const pc = new RTCPeerConnection(webrtcConfig);
+            peerConnections[transferId] = pc;
+            
+            // Handle ICE candidates
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    const targetSession = isSender ? pendingFileTransfer?.receiver_session : 
+                                                     (onlineUsers.find(u => u.session_id !== sessionId)?.session_id);
+                    ws.send(JSON.stringify({
+                        type: 'webrtc_ice_candidate',
+                        transfer_id: transferId,
+                        candidate: event.candidate,
+                        sender_session: sessionId,
+                        target_session: targetSession
+                    }));
+                } else {
+                }
+            };
+            
+            // Handle ICE connection state
+            pc.oniceconnectionstatechange = () => {
+                if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                    console.warn('⚠️ ICE connection failed/disconnected');
+                }
+            };
+            
+            // Handle connection state changes
+            pc.onconnectionstatechange = () => {
+                
+                const notification = document.getElementById(`notification-${transferId}`);
+                const speedDisplay = notification?.querySelector('.speed-display');
+                
+                if (pc.connectionState === 'connected') {
+                } else if (pc.connectionState === 'failed') {
+                    console.error('❌ WebRTC connection failed permanently');
+                    if (speedDisplay) speedDisplay.textContent = '⚠️ P2P failed, retrying via HTTP...';
+                    // Fallback handled by channel error handlers
+                } else if (pc.connectionState === 'disconnected') {
+                    console.warn('⚠️ WebRTC connection disconnected');
+                }
+            };
+            
+            return pc;
+        }
+        
+        async function initiatePeerConnection(transferId, file) {
+            try {
+                const pc = createPeerConnection(transferId, true);
+                
+                // Create data channel for file transfer with optimal settings
+                const channel = pc.createDataChannel('fileTransfer', {
+                    ordered: true,
+                    maxRetransmits: null  // Reliable delivery
+                });
+                dataChannels[transferId] = channel;
+                
+                // Setup data channel handlers
+                setupDataChannelSend(channel, transferId, file);
+                
+                // Set connection timeout (30 seconds)
+                const connectionTimeout = setTimeout(() => {
+                    if (pc.connectionState !== 'connected') {
+                        pc.close();
+                        uploadFile(transferId, file).then(() => {
+                            ws.send(JSON.stringify({
+                                type: 'upload_complete',
+                                transfer_id: transferId
+                            }));
+                        });
+                    }
+                }, 30000);
+                
+                // Clear timeout if connection succeeds
+                pc.onconnectionstatechange = () => {
+                    if (pc.connectionState === 'connected') {
+                        clearTimeout(connectionTimeout);
+                    }
+                };
+                
+                // Create and send offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                ws.send(JSON.stringify({
+                    type: 'webrtc_offer',
+                    transfer_id: transferId,
+                    offer: offer,
+                    sender_session: sessionId,
+                    receiver_session: pendingFileTransfer.receiver_session
+                }));
+            } catch (error) {
+                console.error('❌ Failed to initiate P2P connection:', error);
+                // Fallback to HTTP upload
+                await uploadFile(transferId, file);
+                ws.send(JSON.stringify({
+                    type: 'upload_complete',
+                    transfer_id: transferId
+                }));
+            }
+        }
+        
+        async function handleWebRTCOffer(data) {
+            try {
+                const pc = createPeerConnection(data.transfer_id, false);
+                
+                // Setup data channel receive handler
+                pc.ondatachannel = (event) => {
+                    const channel = event.channel;
+                    dataChannels[data.transfer_id] = channel;
+                    setupDataChannelReceive(channel, data.transfer_id);
+                };
+                
+                // Set remote description and create answer
+                await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                
+                ws.send(JSON.stringify({
+                    type: 'webrtc_answer',
+                    transfer_id: data.transfer_id,
+                    answer: answer,
+                    sender_session: data.sender_session,
+                    receiver_session: sessionId
+                }));
+            } catch (error) {
+                console.error('Failed to handle WebRTC offer:', error);
+            }
+        }
+        
+        async function handleWebRTCAnswer(data) {
+            try {
+                const pc = peerConnections[data.transfer_id];
+                if (pc) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                }
+            } catch (error) {
+                console.error('Failed to handle WebRTC answer:', error);
+            }
+        }
+        
+        async function handleWebRTCIceCandidate(data) {
+            try {
+                const pc = peerConnections[data.transfer_id];
+                if (pc && data.candidate) {
+                    await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                }
+            } catch (error) {
+                console.error('Failed to add ICE candidate:', error);
+            }
+        }
+        
+        function setupDataChannelSend(channel, transferId, file) {
+            const chunkSize = 65536; // 64KB chunks - balance between speed and reliability
+            const maxBufferedAmount = 262144; // 256KB buffer threshold
+            let offset = 0;
+            const startTime = Date.now();
+            
+            channel.bufferedAmountLowThreshold = maxBufferedAmount / 2;
+            
+            channel.onopen = () => {
+                
+                const notification = document.getElementById(`notification-${transferId}`);
+                const progressBar = notification?.querySelector('.progress-fill');
+                const progressInfo = notification?.querySelector('.progress-info');
+                const speedDisplay = notification?.querySelector('.speed-display');
+                
+                // Send file metadata first
+                const metadata = JSON.stringify({
+                    type: 'METADATA',
+                    name: file.name,
+                    size: file.size,
+                    mimeType: file.type || 'application/octet-stream'
+                });
+                channel.send(metadata);
+                
+                // Define readSlice function
+                const readSlice = () => {
+                    // Check buffer before sending to prevent overflow
+                    if (channel.bufferedAmount > maxBufferedAmount) {
+                        // Wait for bufferedamountlow event
+                        return;
+                    }
+                    
+                    const slice = file.slice(offset, offset + chunkSize);
+                    const reader = new FileReader();
+                    
+                    reader.onload = (e) => {
+                        try {
+                            if (channel.readyState === 'open') {
+                                channel.send(e.target.result);
+                                offset += e.target.result.byteLength;
+                            }
+                            
+                            // Update progress
+                            const percent = (offset / file.size) * 100;
+                            const elapsed = (Date.now() - startTime) / 1000;
+                            const speed = offset / elapsed;
+                            
+                            if (progressBar) progressBar.style.width = `${percent}%`;
+                            if (progressInfo) progressInfo.textContent = `${formatFileSize(offset)} / ${formatFileSize(file.size)} (${percent.toFixed(0)}%)`;
+                            if (speedDisplay) speedDisplay.textContent = `Speed: ${formatFileSize(speed)}/s ⚡ WebRTC P2P`;
+                            
+                            if (offset < file.size) {
+                                // Continue reading next chunk immediately if buffer allows
+                                if (channel.bufferedAmount < maxBufferedAmount) {
+                                    readSlice();
+                                }
+                                // Otherwise will be resumed by onbufferedamountlow
+                            } else {
+                                // Transfer complete
+                                const eofMessage = JSON.stringify({ type: 'EOF', totalBytes: file.size });
+                                channel.send(eofMessage);
+                                if (progressInfo) progressInfo.textContent = 'Complete!';
+                                ws.send(JSON.stringify({
+                                    type: 'file_transfer_complete',
+                                    transfer_id: transferId,
+                                    success: true
+                                }));
+                                setTimeout(() => {
+                                    channel.close();
+                                    peerConnections[transferId]?.close();
+                                }, 1000);
+                            }
+                        } catch (error) {
+                            console.error('Error sending chunk:', error);
+                            if (progressInfo) progressInfo.textContent = 'Transfer failed';
+                            if (speedDisplay) speedDisplay.textContent = '⚠️ Error - Retrying via HTTP';
+                            // Fallback to HTTP
+                            uploadFile(transferId, file).then(() => {
+                                ws.send(JSON.stringify({
+                                    type: 'upload_complete',
+                                    transfer_id: transferId
+                                }));
+                            });
+                        }
+                    };
+                    
+                    reader.onerror = (error) => {
+                        console.error('FileReader error:', error);
+                    };
+                    
+                    reader.readAsArrayBuffer(slice);
+                };
+                
+                // Resume sending when buffer drains
+                channel.onbufferedamountlow = () => {
+                    if (offset < file.size) {
+                        readSlice();
+                    }
+                };
+                
+                // Wait a bit for metadata to arrive before sending chunks
+                setTimeout(() => {
+                    readSlice();
+                }, 50);
+            };
+            
+            channel.onerror = (error) => {
+                console.error('Data channel error:', error);
+                const notification = document.getElementById(`notification-${transferId}`);
+                const progressInfo = notification?.querySelector('.progress-info');
+                const speedDisplay = notification?.querySelector('.speed-display');
+                if (progressInfo) progressInfo.textContent = 'Connection failed';
+                if (speedDisplay) speedDisplay.textContent = '⚠️ Switching to HTTP';
+                // Fallback to HTTP
+                uploadFile(transferId, file);
+            };
+            
+            channel.onclose = () => {
+            };
+        }
+        
+        function setupDataChannelReceive(channel, transferId) {
+            const chunks = [];
+            let receivedBytes = 0;
+            let totalFileSize = 0;
+            let fileName = 'download';
+            let fileMimeType = 'application/octet-stream';
+            const startTime = Date.now();
+            let isComplete = false;
+            let metadataReceived = false;
+            
+            const notification = document.getElementById(`notification-${transferId}`);
+            const progressBar = notification?.querySelector('.progress-fill');
+            const progressInfo = notification?.querySelector('.progress-info');
+            const speedDisplay = notification?.querySelector('.speed-display');
+            
+            channel.onmessage = (event) => {
+                try {
+                    // Check if it's a string message (metadata or EOF)
+                    if (typeof event.data === 'string') {
+                        const message = JSON.parse(event.data);
+                        
+                        if (message.type === 'METADATA') {
+                            // Receive file metadata
+                            fileName = message.name;
+                            totalFileSize = message.size;
+                            fileMimeType = message.mimeType;
+                            metadataReceived = true;
+                            if (progressInfo) progressInfo.textContent = `Receiving: ${fileName}`;
+                        } else if (message.type === 'EOF') {
+                            // Transfer complete
+                            isComplete = true;
+                            
+                            // Verify received size matches
+                            if (message.totalBytes && receivedBytes !== message.totalBytes) {
+                                console.error(`Size mismatch! Expected: ${message.totalBytes}, Received: ${receivedBytes}`);
+                                if (progressInfo) progressInfo.textContent = 'File corrupted (size mismatch)';
+                                return;
+                            }
+                            
+                            // Create blob with proper MIME type
+                            const blob = new Blob(chunks, { type: fileMimeType });
+                            
+                            if (blob.size !== receivedBytes) {
+                                console.error(`Blob size mismatch! Expected: ${receivedBytes}, Got: ${blob.size}`);
+                            }
+                            
+                            // Trigger download
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = fileName;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            window.URL.revokeObjectURL(url);
+                            
+                            if (progressInfo) progressInfo.textContent = 'Complete!';
+                            if (progressBar) progressBar.style.width = '100%';
+                            
+                            ws.send(JSON.stringify({
+                                type: 'file_transfer_complete',
+                                transfer_id: transferId,
+                                success: true
+                            }));
+                            
+                            setTimeout(() => {
+                                channel.close();
+                                peerConnections[transferId]?.close();
+                            }, 1000);
+                        }
+                    } else if (event.data instanceof ArrayBuffer && metadataReceived) {
+                        // Receiving data chunk
+                        chunks.push(event.data);
+                        receivedBytes += event.data.byteLength;
+                        
+                        // Update progress with actual file size
+                        const elapsed = (Date.now() - startTime) / 1000;
+                        const speed = receivedBytes / elapsed;
+                        
+                        if (totalFileSize > 0) {
+                            const percent = (receivedBytes / totalFileSize) * 100;
+                            if (progressBar) progressBar.style.width = `${percent}%`;
+                            if (progressInfo) progressInfo.textContent = `${formatFileSize(receivedBytes)} / ${formatFileSize(totalFileSize)} (${percent.toFixed(0)}%)`;
+                        } else {
+                            if (progressInfo) progressInfo.textContent = `Received: ${formatFileSize(receivedBytes)}`;
+                        }
+                        if (speedDisplay) speedDisplay.textContent = `Speed: ${formatFileSize(speed)}/s ⚡ WebRTC P2P`;
+                    }
+                } catch (error) {
+                    console.error('Error processing received data:', error);
+                    if (progressInfo) progressInfo.textContent = 'Error receiving file';
+                    if (speedDisplay) speedDisplay.textContent = '⚠️ Transfer error';
+                }
+            };
+            
+            channel.onerror = (error) => {
+                console.error('Data channel receive error:', error);
+                if (!isComplete) {
+                    if (progressInfo) progressInfo.textContent = 'Connection error';
+                    if (speedDisplay) speedDisplay.textContent = '⚠️ Transfer interrupted';
+                }
+            };
+            
+            channel.onclose = () => {
+                if (!isComplete) {
+                    if (progressInfo) progressInfo.textContent = 'Transfer incomplete';
+                }
+            };
+        }
+        
+        // ========== End WebRTC Functions ==========
+
         // Escape HTML to prevent XSS
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // Format file size to human readable format
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
         // Join button handler
@@ -726,6 +1511,61 @@
         document.getElementById('usernameInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 document.getElementById('joinButton').click();
+            }
+        });
+
+        // Shared Text Editor Functions
+        function openEditor() {
+            document.getElementById('editorModal').classList.add('active');
+            document.getElementById('sharedTextArea').focus();
+        }
+
+        function closeEditor() {
+            document.getElementById('editorModal').classList.remove('active');
+        }
+
+        function copyText() {
+            const textArea = document.getElementById('sharedTextArea');
+            textArea.select();
+            document.execCommand('copy');
+            alert('Text copied to clipboard!');
+        }
+
+        function clearText() {
+            if (confirm('Clear all text? This will clear it for everyone!')) {
+                document.getElementById('sharedTextArea').value = '';
+                broadcastTextUpdate('');
+            }
+        }
+
+        // Real-time text synchronization
+        document.getElementById('sharedTextArea').addEventListener('input', (e) => {
+            if (!isUpdatingText) {
+                broadcastTextUpdate(e.target.value);
+            }
+        });
+
+        function broadcastTextUpdate(text) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'text_update',
+                    text: text,
+                    username: username
+                }));
+            }
+        }
+
+        function handleTextUpdate(data) {
+            const textArea = document.getElementById('sharedTextArea');
+            isUpdatingText = true;
+            textArea.value = data.text;
+            isUpdatingText = false;
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('editorModal').addEventListener('click', (e) => {
+            if (e.target.id === 'editorModal') {
+                closeEditor();
             }
         });
     </script>

@@ -117,6 +117,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# File upload settings
-FILE_UPLOAD_MAX_MEMORY_SIZE = 2621440  # 2.5 MB
-DATA_UPLOAD_MAX_MEMORY_SIZE = 2621440  # 2.5 MB
+# File upload settings - Allow large files
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5 MB - files larger stream to disk
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5 MB
+FILE_UPLOAD_MAX_SIZE = None  # No limit on total file size
